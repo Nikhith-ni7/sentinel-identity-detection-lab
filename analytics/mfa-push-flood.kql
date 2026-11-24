@@ -1,0 +1,8 @@
+SigninLogs
+| where TimeGenerated > ago(15m) and isnotempty(UserId) and isnotempty(Id)
+| mv-expand Step=parse_json(AuthenticationDetails)
+| where tostring(Step.authenticationMethod) =~ "Mobile app notification"
+| where tobool(Step.succeeded) == false
+| summarize arg_max(TimeGenerated, *) by UserId, Id
+| summarize FailedPushSignIns=count(), arg_max(TimeGenerated, UserPrincipalName, IPAddress) by UserId
+| where FailedPushSignIns >= 5

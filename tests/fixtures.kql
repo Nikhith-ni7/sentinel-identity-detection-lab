@@ -1,0 +1,28 @@
+// Prepend this file to one detection query in an Azure Monitor Logs session.
+let MakeSignIn = (NewId:string, User:string, Offset:timespan, Address:string,
+                  Code:string, Country:string, Details:string, Coordinates:dynamic, Risk:string) {
+    print TimeGenerated=now()-Offset, Id=NewId, UserId=User,
+        UserPrincipalName=strcat(User, "@example.test"), IPAddress=Address,
+        ResultType=Code, Location=Country, AuthenticationDetails=Details,
+        LocationDetails=Coordinates, RiskLevelDuringSignIn=Risk, RiskEventTypes_V2="[]"
+};
+let SigninLogs = union
+    (range I from 1 to 5 step 1
+        | project TimeGenerated=ago(5m), IPAddress="192.0.2.10", ResultType="50126",
+            UserPrincipalName=strcat("spray", I, "@example.test")),
+    (range I from 1 to 5 step 1
+        | project TimeGenerated=ago(5m), IPAddress="192.0.2.11", Id=strcat("push", I),
+            UserId="mfa", UserPrincipalName="mfa@example.test", ResultType="500121",
+            AuthenticationDetails='[{"authenticationMethod":"Mobile app notification","succeeded":false}]'),
+    (MakeSignIn("us", "traveler", 2h, "192.0.2.12", "0", "US", "[]",
+        dynamic({"geoCoordinates":{"latitude":40.7,"longitude":-74.0}}), "none")),
+    (MakeSignIn("gb", "traveler", 10m, "192.0.2.13", "0", "GB", "[]",
+        dynamic({"geoCoordinates":{"latitude":51.5,"longitude":-0.1}}), "none")),
+    (MakeSignIn("risk", "risky", 5m, "192.0.2.14", "0", "US", "[]", dynamic(null), "high")),
+    (MakeSignIn("normal", "normal", 5m, "192.0.2.15", "0", "US", "[]", dynamic(null), "none"));
+let OfficeActivity = datatable(UserId:string, ClientIP:string, OfficeWorkload:string, Operation:string, Parameters:string)
+[
+    "mail@example.test", "192.0.2.16", "Exchange", "New-InboxRule", '[{"Name":"ForwardTo","Value":"external@example.test"}]',
+    "normal@example.test", "192.0.2.17", "Exchange", "New-InboxRule", '[{"Name":"MoveToFolder","Value":"Receipts"}]'
+]
+| extend TimeGenerated=ago(5m);

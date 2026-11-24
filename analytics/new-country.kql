@@ -1,0 +1,12 @@
+let Successful = SigninLogs
+    | where TimeGenerated > ago(7d) and ResultType == "0"
+    | where isnotempty(UserId) and isnotempty(Location)
+    | extend Country=toupper(Location);
+let History = Successful
+    | where TimeGenerated <= ago(1h)
+    | project UserId, Country;
+Successful
+| where TimeGenerated > ago(1h)
+| join kind=leftsemi (History | distinct UserId) on UserId
+| join kind=leftanti (History | distinct UserId, Country) on UserId, Country
+| summarize arg_max(TimeGenerated, UserPrincipalName, IPAddress) by UserId, Country

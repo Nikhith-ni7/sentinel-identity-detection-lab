@@ -1,0 +1,5 @@
+SigninLogs
+| where TimeGenerated > ago(1h) and ResultType == "0"
+| where RiskLevelDuringSignIn =~ "high" and isnotempty(UserId)
+| project TimeGenerated, Id, UserId, UserPrincipalName, IPAddress,
+    Location, RiskLevelDuringSignIn, RiskEventTypes_V2

@@ -1,0 +1,8 @@
+OfficeActivity
+| where TimeGenerated > ago(1h) and OfficeWorkload =~ "Exchange"
+| where Operation in~ ("New-InboxRule", "Set-InboxRule")
+| mv-expand Parameter=parse_json(Parameters)
+| extend Action=tostring(Parameter.Name), Target=tostring(Parameter.Value)
+| where (Action in~ ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo") and isnotempty(Target))
+    or (Action =~ "DeleteMessage" and Target =~ "true")
+| project TimeGenerated, UserId, ClientIP, Operation, Action, Target

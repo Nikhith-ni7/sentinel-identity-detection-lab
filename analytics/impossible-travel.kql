@@ -1,0 +1,17 @@
+SigninLogs
+| where TimeGenerated > ago(8h) and ResultType == "0"
+| where isnotempty(UserId) and isnotempty(IPAddress) and isnotempty(Location)
+| extend Coordinates=todynamic(LocationDetails).geoCoordinates
+| extend Latitude=todouble(Coordinates.latitude), Longitude=todouble(Coordinates.longitude)
+| where isnotnull(Latitude) and isnotnull(Longitude)
+| sort by UserId asc, TimeGenerated asc
+| extend PreviousUser=prev(UserId), PreviousTime=prev(TimeGenerated),
+    PreviousCountry=prev(Location), PreviousIP=prev(IPAddress),
+    PreviousLatitude=prev(Latitude), PreviousLongitude=prev(Longitude)
+| where UserId == PreviousUser and Location !~ PreviousCountry and IPAddress != PreviousIP
+| where TimeGenerated > ago(1h) and TimeGenerated > PreviousTime
+| extend DistanceKm=geo_distance_2points(PreviousLongitude, PreviousLatitude, Longitude, Latitude)/1000.0
+| extend SpeedKmh=DistanceKm / ((TimeGenerated - PreviousTime) / 1h)
+| where DistanceKm >= 500 and SpeedKmh > 900
+| project TimeGenerated, UserId, UserPrincipalName, IPAddress, Location,
+    PreviousTime, PreviousIP, PreviousCountry, DistanceKm, SpeedKmh
