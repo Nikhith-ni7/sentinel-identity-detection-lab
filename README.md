@@ -1,6 +1,6 @@
 # Microsoft Sentinel identity attack detection and response
 
-Seven KQL analytics rules cover password spray, MFA fatigue, risky sign-ins and suspicious mailbox rules. The ARM templates include a Logic App design for session revocation and account disabling. The verified results below cover the six original synthetic incidents.
+This Microsoft Sentinel lab builds and tests seven KQL detections for identity threats and suspicious mailbox rules. All seven queries returned their expected results in Azure Monitor Logs, and six scheduled rules generated Sentinel incidents. The deployed dry-run Logic App accepts Sentinel incidents and records the intended response. The ARM template also implements session revocation and account disabling for explicitly allowed lab users. End-to-end workflow execution and live containment still need verification.
 
 ## Architecture
 
