@@ -32,14 +32,14 @@ flowchart LR
 | MFA fatigue success | 3+ failed pushes, then a successful sign-in within 30 min | T1621, T1078.004 | High | Yes |
 | New country | Successful sign-in from a country absent from the user's 7-day history | T1078.004 | Low | No: travel is common |
 | Impossible travel | Consecutive sign-ins >500 km apart at >900 km/h | T1078.004 | Medium | Yes |
-| Suspicious inbox rule | Forward/redirect, delete, or move to RSS/Archive/Conversation History (PowerShell, OWA and Outlook client rules) | T1114.003, T1564.008 | High | Yes |
+| Suspicious inbox rule | Forward/redirect, delete, or move to RSS/Archive/Conversation History (PowerShell, OWA and Outlook client rules) | T1114.003, T1564.008 | High | No. The mailbox entity provides a UPN, and live containment requires an Entra object ID. |
 | High-risk sign-in | Successful sign-in rated high risk by Entra ID Protection | T1078.004 | High | Yes |
 
 ## Response playbook
 
-Runs on incidents from the four account-compromise rules. For each account in the incident it:
+The production automation rule targets MFA fatigue followed by successful sign-in, impossible travel, and high-risk successful sign-in. For each account in those incidents, the playbook:
 
-1. Resolves the Entra user (object ID, or UPN for mailbox incidents).
+1. Reads the account entity from the incident.
 2. Requires an explicitly allowed Entra object ID and membership in the dedicated **Lab users** group before a live action. Keep both lists limited to unprivileged test accounts.
 3. In dry-run mode (default) comments what it would do; with `dryRun=false` it calls
    `revokeSignInSessions`, sets `accountEnabled=false`, and comments the result.

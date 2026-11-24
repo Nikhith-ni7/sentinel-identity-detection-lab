@@ -57,6 +57,12 @@ class TemplateTests(unittest.TestCase):
     def test_playbook_defaults_to_dry_run(self):
         self.assertTrue(self.production["parameters"]["dryRun"]["defaultValue"])
 
+    def test_mailbox_incidents_do_not_trigger_containment(self):
+        automation = self.of_type(self.production, "automationRules")[0]
+        condition = automation["properties"]["triggeringLogic"]["conditions"][0]
+        rule_ids = condition["conditionProperties"]["propertyValues"]
+        self.assertNotIn(build_template.rule_resource_id("suspicious-inbox-rule"), rule_ids)
+
     def test_synthetic_incidents_do_not_run_containment(self):
         automation = self.of_type(self.synthetic, "automationRules")[0]
         self.assertFalse(automation["properties"]["triggeringLogic"]["isEnabled"])

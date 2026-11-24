@@ -76,7 +76,7 @@ RULES = {
     "suspicious-inbox-rule": {
         "name": "Suspicious inbox rule", "frequency": "PT1H", "period": "PT1H", "severity": "High",
         "tactics": ["Collection", "DefenseEvasion"], "techniques": ["T1114", "T1564"],
-        "sub": ["T1114.003", "T1564.008"], "entities": MAILBOX_ENTITIES, "contain": True,
+        "sub": ["T1114.003", "T1564.008"], "entities": MAILBOX_ENTITIES, "contain": False,
     },
     "risky-successful-signin": {
         "name": "High-risk successful sign-in", "frequency": "PT1H", "period": "PT1H", "severity": "High",
