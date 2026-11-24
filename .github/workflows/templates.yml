@@ -1,0 +1,28 @@
+name: Build and check templates
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: Build both templates
+        run: |
+          mkdir -p build
+          python deployment/build_template.py synthetic build/identity-lab-synthetic.json
+          python deployment/build_template.py production build/identity-lab-production.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arm-templates
+          path: build/

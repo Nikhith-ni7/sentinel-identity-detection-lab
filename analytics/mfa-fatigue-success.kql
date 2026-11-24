@@ -1,0 +1,20 @@
+// MFA fatigue that worked: three or more denied or ignored push notifications for a user,
+// followed by a successful sign-in within 30 minutes.
+let Window = 30m;
+let FailedPushes = SigninLogs
+    | where TimeGenerated > ago(Window) and isnotempty(UserId) and isnotempty(Id)
+    | mv-expand Step=parse_json(AuthenticationDetails)
+    | where tostring(Step.authenticationMethod) =~ "Mobile app notification"
+    | where tobool(Step.succeeded) == false
+    | summarize arg_max(TimeGenerated, IPAddress) by UserId, Id
+    | summarize FailedPushSignIns=count(), FirstFailure=min(TimeGenerated),
+        LastFailure=max(TimeGenerated), FailedFromIPs=make_set(IPAddress, 20)
+        by UserId
+    | where FailedPushSignIns >= 3;
+SigninLogs
+| where TimeGenerated > ago(Window) and ResultType == "0" and isnotempty(UserId)
+| join kind=inner FailedPushes on UserId
+| where TimeGenerated > FirstFailure
+| summarize arg_max(TimeGenerated, UserPrincipalName, IPAddress, Location,
+    FailedPushSignIns, FirstFailure, FailedFromIPs) by UserId
+| extend MinutesFromFirstPush=datetime_diff("minute", TimeGenerated, FirstFailure)

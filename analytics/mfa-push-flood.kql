@@ -1,3 +1,4 @@
+// Five or more sign-ins in 15 minutes where a user failed a push notification (denied or ignored).
 SigninLogs
 | where TimeGenerated > ago(15m) and isnotempty(UserId) and isnotempty(Id)
 | mv-expand Step=parse_json(AuthenticationDetails)

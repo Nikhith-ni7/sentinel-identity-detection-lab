@@ -1,3 +1,4 @@
+// Successful sign-in from a country the user has not signed in from in the previous 7 days (users with history only).
 let Successful = SigninLogs
     | where TimeGenerated > ago(7d) and ResultType == "0"
     | where isnotempty(UserId) and isnotempty(Location)

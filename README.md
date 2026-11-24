@@ -1,33 +1,104 @@
-# Microsoft Sentinel identity detection lab
+# Microsoft Sentinel identity attack detection and response
 
-This first phase contains KQL for six scheduled analytics rules and synthetic data for query testing. The thresholds are starting values for a small lab. Review alerts before deciding whether to contain an account.
+Seven KQL analytics rules cover password spray, MFA fatigue, risky sign-ins and suspicious mailbox rules. The ARM templates include a Logic App design for session revocation and account disabling. The verified results below cover the six original synthetic incidents.
 
-| Query | Suggested run interval / lookup | Expected synthetic result |
-| --- | --- | --- |
-| Password spray | 15 min / 15 min | Source 192.0.2.10, five distinct accounts |
-| MFA push flooding | 15 min / 15 min | mfa@example.test, five sign-ins with failed push steps |
-| New country | 1 hour / 7 days | traveler@example.test, GB |
-| Impossible travel | 1 hour / 8 hours | traveler@example.test, US to GB |
-| Suspicious inbox rule | 1 hour / 1 hour | mail@example.test, ForwardTo |
-| High-risk successful sign-in | 1 hour / 1 hour | risky@example.test |
+## Architecture
 
-To test a query, paste the full contents of `tests/fixtures.kql` followed by one file from `analytics/` into **Logs** and run the combined query. Repeat for all six. The fixture supplies local tables within the query. Record the output and compare it with the expected row above. These tests require access to a KQL query engine. The fixture blocks are for query testing and should be removed when creating a rule against live tables.
+```mermaid
+flowchart LR
+    subgraph Tenant["Entra ID tenant (P2)"]
+        U["Test users<br/>(Lab users group)"] --> SL["Sign-in logs"]
+        U --> EX["Exchange Online audit"]
+    end
+    SL -->|Entra ID connector| LA["Log Analytics<br/>SigninLogs"]
+    EX -->|Microsoft 365 connector| OA["OfficeActivity"]
+    subgraph Sentinel["Microsoft Sentinel"]
+        LA --> R["7 scheduled<br/>analytics rules"]
+        OA --> R
+        R --> I["Incidents<br/>(account + IP entities)"]
+        I -->|automation rule:<br/>compromise rules only| P["Containment playbook<br/>(managed identity)"]
+    end
+    P -->|"Graph: lab group member?"| G["Microsoft Graph"]
+    G -->|"yes: revokeSignInSessions<br/>+ accountEnabled=false"| U
+    P -->|comment| I
+```
 
-The MFA rule counts sign-ins with unsuccessful mobile notification steps. Check the authentication method label against actual tenant logs before enabling the rule. The sign-in rules use interactive sign-in logs. High-risk sign-ins are leads for investigation. Exchange inbox rules require Exchange audit data in `OfficeActivity`.
+## Detections
 
-## Cloud prerequisites
+| Rule | Logic | ATT&CK | Severity | Auto-contain |
+| --- | --- | --- | --- | --- |
+| Password spray | One IP failing against 5+ accounts in 15 min (bad password, Smart Lockout, unknown user); High if the IP then signs in successfully | T1110.003 | Medium / High | No: only the IP is known |
+| MFA push flooding | 5+ sign-ins in 15 min with a denied or ignored push | T1621 | Medium | No |
+| MFA fatigue success | 3+ failed pushes, then a successful sign-in within 30 min | T1621, T1078.004 | High | Yes |
+| New country | Successful sign-in from a country absent from the user's 7-day history | T1078.004 | Low | No: travel is common |
+| Impossible travel | Consecutive sign-ins >500 km apart at >900 km/h | T1078.004 | Medium | Yes |
+| Suspicious inbox rule | Forward/redirect, delete, or move to RSS/Archive/Conversation History (PowerShell, OWA and Outlook client rules) | T1114.003, T1564.008 | High | Yes |
+| High-risk sign-in | Successful sign-in rated high risk by Entra ID Protection | T1078.004 | High | Yes |
 
-- Student835 carries the P2 trial and currently has no Azure subscription. The built-in Entra connector requires a Sentinel workspace in the same tenant. The FAU Azure for Students subscription can host the synthetic test path if school policies permit.
-- Before enabling any cloud resources, verify P2 recurring billing is off and configure a budget alert for the Azure subscription used by the lab.
-- For a live deployment, confirm the connector has populated `SigninLogs` and `AuditLogs`, and verify Exchange auditing separately if testing mailbox activity.
-- Validate the response playbook in dry-run mode. For live containment, limit it to explicitly listed lab users and exclude administrators. The password-spray query identifies a source IP and attempted accounts, which is insufficient evidence to disable those accounts.
-- Record actual alert evidence, containment results, and outstanding gaps in the incident report after testing.
+## Response playbook
 
-## Synthetic Sentinel deployment
+Runs on incidents from the four account-compromise rules. For each account in the incident it:
 
-From the project root, run `python3 deployment/build_template.py /tmp/identity-lab-template.json` immediately before deployment. Use Azure's custom template deployment with the existing `rg-identity-lab` resource group. The generated template targets the existing workspace, onboards Sentinel, and creates six scheduled rules that evaluate inline fixtures. It also creates a disabled, HTTP-triggered Logic App for a manual dry run. The rule queries stop returning results one hour after generation. Confirm the six incidents, then disable the synthetic rules to stop evaluation.
+1. Resolves the Entra user (object ID, or UPN for mailbox incidents).
+2. Requires an explicitly allowed Entra object ID and membership in the dedicated **Lab users** group before a live action. Keep both lists limited to unprivileged test accounts.
+3. In dry-run mode (default) comments what it would do; with `dryRun=false` it calls
+   `revokeSignInSessions`, sets `accountEnabled=false`, and comments the result.
 
-For incident automation, use a Microsoft Sentinel incident trigger in a Consumption Logic App and copy the dry-run Compose action into that playbook. Configure the Sentinel connector and authorize Sentinel to run the playbook. Add an incident-created automation rule scoped to the six synthetic rules. Verify the run history before recording containment evidence in the incident report.
+It authenticates with its own managed identity, using Microsoft Graph application
+permissions (`deployment/Grant-PlaybookGraphPermissions.ps1`) and Microsoft Sentinel Responder
+on the workspace. There are no secrets or stored credentials.
 
-- [Scheduled rule ARM reference](https://learn.microsoft.com/en-us/azure/templates/microsoft.securityinsights/alertrules)
-- [Microsoft Sentinel incident automation](https://learn.microsoft.com/en-us/azure/sentinel/automate-incident-handling-with-automation-rules)
+## Results
+
+| Evidence | Status |
+| --- | --- |
+| Synthetic deployment: 6 original rules each created a Sentinel incident (Nov 23, 2026) | Done, see [incident-report.md](incident-report.md) |
+| All seven updated queries run in Azure Monitor Logs against the expanded fixture | Verified, see [incident-report.md](incident-report.md) |
+| Live Entra and Exchange connector validation | Pending, see [validation guide](docs/SIMULATION.md) |
+| Playbook containing a real account (sessions revoked, account disabled) | Pending |
+| End-to-end run of the updated containment template | Pending |
+
+## Deploy
+
+```sh
+mkdir -p build
+# Generate a synthetic detection template (test queries expire after 1 hour)
+python3 deployment/build_template.py synthetic build/identity-lab-synthetic.json
+
+# Real SigninLogs / OfficeActivity
+python3 deployment/build_template.py production build/identity-lab-production.json
+```
+
+Deploy the JSON with **Deploy a custom template** into the resource group that holds the
+Sentinel workspace. Set `workspaceName` and `location` explicitly. The production playbook also uses `labGroupId`, `allowedLabUserIds` (Entra object IDs), and `dryRun` (default `true`). Grant the managed identity Microsoft Graph permissions only in an isolated lab tenant, using its exact object ID and the tenant ID with `deployment/Grant-PlaybookGraphPermissions.ps1`. See the [validation guide](docs/SIMULATION.md).
+
+To test a single query by hand, paste `tests/fixtures.kql` followed by one file from
+`analytics/` into Sentinel → Logs.
+
+| Query on the test data | Expected result |
+| --- | --- |
+| Password spray | 192.0.2.10, 5 accounts, `spray3` succeeded → High. 192.0.2.20 (one user, 4 typos) is not flagged |
+| MFA push flooding | `mfa`, 5 failed pushes |
+| MFA fatigue success | `fatigue` (3 denials, then approved). `slip` (1 denial) is not flagged |
+| New country | `traveler`, GB |
+| Impossible travel | `traveler`, US → GB |
+| Suspicious inbox rule | `mail` (forward), `rss` (RSS Subscriptions), `client` (Outlook rule). `normal` is not flagged |
+| High-risk sign-in | `risky` |
+
+## Layout
+
+```
+analytics/    one KQL file per rule (first comment lines become the rule description)
+tests/        inline test data for the queries; unit tests for the template builder
+deployment/   build_template.py (ARM generator), Graph permission script
+docs/         synthetic validation and lab connector checklist
+incident-report.md   incident evidence and response decisions
+```
+
+## Tuning notes
+
+- Thresholds are set for a small lab; raise the spray and push counts for a real tenant.
+- Impossible travel ignores same-IP pairs; corporate VPN and mobile carrier egress still cause
+  false positives, so check the IP owner before containing.
+- The Outlook client branch of the inbox rule check matches text in the audit record; check
+  it against your tenant's `OfficeActivity` data.

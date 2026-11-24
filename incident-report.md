@@ -27,3 +27,17 @@ Six detection queries were exercised with inline synthetic records in Azure Moni
 The incident queue showed medium severity and one alert per incident. The inputs were synthetic. No sessions were revoked and no accounts were disabled. Live response is pending an isolated tenant deployment with dedicated test users and an Azure subscription in that tenant.
 
 The `logic-identity-lab-dry-run` Consumption Logic App was deployed to `rg-identity-lab-playbooks` in West US 3. Its saved workflow has a Sentinel incident trigger and a Compose action that records the incident title, incident number, and dry-run disposition. Sentinel authorization, automation-rule attachment, and run-history verification are pending.
+
+## Updated query validation
+
+All seven updated queries ran in Azure Monitor Logs against the expanded inline fixture. These runs checked query output without scheduling additional incidents.
+
+| Updated query | Observed output |
+| --- | --- |
+| Password spray | `192.0.2.10`, five failed attempts across five accounts, followed by a successful sign-in for `spray3`. The single-user control returned no row. |
+| MFA push flooding | One row with five failed push sign-ins for `mfa`. |
+| MFA fatigue followed by success | One row for `fatigue`, with three failed pushes followed by a success. The `slip` control returned no row. |
+| New country | One row for `traveler` in GB. |
+| Impossible travel | One US-to-GB row for `traveler`, approximately 5,573 km apart. |
+| Suspicious inbox rule | Three rows covering forwarding, an RSS move, and an Outlook client rule. The normal mailbox control returned no row. |
+| High-risk successful sign-in | One high-risk row for `risky`. |

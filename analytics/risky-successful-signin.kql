@@ -1,3 +1,4 @@
+// Successful sign-in that Entra ID Protection rated high risk at sign-in time (requires Entra ID P2).
 SigninLogs
 | where TimeGenerated > ago(1h) and ResultType == "0"
 | where RiskLevelDuringSignIn =~ "high" and isnotempty(UserId)

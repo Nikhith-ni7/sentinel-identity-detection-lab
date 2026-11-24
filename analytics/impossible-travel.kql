@@ -1,3 +1,4 @@
+// Consecutive successful sign-ins from different countries more than 500 km apart at over 900 km/h.
 SigninLogs
 | where TimeGenerated > ago(8h) and ResultType == "0"
 | where isnotempty(UserId) and isnotempty(IPAddress) and isnotempty(Location)

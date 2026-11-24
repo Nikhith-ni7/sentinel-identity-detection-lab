@@ -1,8 +1,22 @@
-OfficeActivity
-| where TimeGenerated > ago(1h) and OfficeWorkload =~ "Exchange"
-| where Operation in~ ("New-InboxRule", "Set-InboxRule")
-| mv-expand Parameter=parse_json(Parameters)
-| extend Action=tostring(Parameter.Name), Target=tostring(Parameter.Value)
-| where (Action in~ ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo") and isnotempty(Target))
-    or (Action =~ "DeleteMessage" and Target =~ "true")
+// Inbox rules that hide or steal mail: forwarding/redirecting, deleting, or moving messages
+// to folders users rarely open (RSS Subscriptions, Archive, Conversation History).
+// Covers rules made with PowerShell / OWA (New-InboxRule, Set-InboxRule) and rules made in
+// the Outlook desktop client (UpdateInboxRules). Check UpdateInboxRules field contents
+// against your tenant's OfficeActivity data before relying on that branch.
+let HidingFolders = dynamic(["RSS Subscriptions", "RSS Feeds", "Archive", "Conversation History", "Deleted Items"]);
+let ServerRules = OfficeActivity
+    | where TimeGenerated > ago(1h) and OfficeWorkload =~ "Exchange"
+    | where Operation in~ ("New-InboxRule", "Set-InboxRule")
+    | mv-expand Parameter=parse_json(Parameters)
+    | extend Action=tostring(Parameter.Name), Target=tostring(Parameter.Value)
+    | where (Action in~ ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo") and isnotempty(Target))
+        or (Action =~ "DeleteMessage" and Target =~ "true")
+        or (Action =~ "MoveToFolder" and Target in~ (HidingFolders));
+let ClientRules = OfficeActivity
+    | where TimeGenerated > ago(1h) and OfficeWorkload =~ "Exchange"
+    | where Operation =~ "UpdateInboxRules"
+    | extend Details=strcat(tostring(column_ifexists("OperationProperties", "")), tostring(Parameters))
+    | where Details has_any ("Forward", "Redirect", "Delete", "RSS")
+    | extend Action="Outlook client rule", Target=Details;
+union ServerRules, ClientRules
 | project TimeGenerated, UserId, ClientIP, Operation, Action, Target
